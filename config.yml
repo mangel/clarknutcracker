@@ -1,0 +1,16 @@
+---
+memcached:
+ location:
+access_list:
+ -
+   hostname: host_a
+   auth_key: xxx
+ -
+   hostname: host_b
+   auth_key: yyy
+ -
+   hostname: host_d
+   auth_key: zzz
+ -
+   hostname: host_e
+   auth_key: aaa
