@@ -17,6 +17,8 @@ module Proto
 		unless headers.nil?
 			unless headers['HTTP_X_COMMAND'].nil?
 				case headers['HTTP_X_COMMAND'].downcase
+					when 'publish'
+						command = :publish
 					when 'subscribe'
 						command = :subscribe
 					when 'unsubscribe'
@@ -26,16 +28,23 @@ module Proto
 					when 'delete'
 						command = :delete
 				end
-				result= {:command => command } unless command.nil?
+				unless command.nil? 
+								unless headers['HTTP_X_AUTH_KEY'].nil?
+									result={:command => command, :auth_key => headers['HTTP_X_AUTH_KEY']}
+								end
+				end
 			end
 		end
 		result
 	end
 
+	def validate_publish_request(headers)
+		result=:valid
+	end
+
 	def validate_subscribe_request(headers)
 		result=nil
 		unless headers.nil?
-
 		end
 		result
 	end
