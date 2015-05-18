@@ -44,28 +44,99 @@ class Clarknutcracker < Sinatra::Base
 
 		status="NONE"
 		authentication_status = authenticate_request(@@settings["access_list"], env)
-		if authentication_status == :authorized
+		if authentication_status[:auth_status] == :authorized
 			request_validation_status = validate_request_and_get_parameters(env, request)
 			unless request_validation_status.nil?
 				case request_validation_status[:command]
 					when :subscribe
+						data_uuid    = request_validation_status[:args][:x_data_uuid]
+						hostname     = authentication_status[:hostname]
+						callback_url = request_validation_status[:args][:x_callback_url]
+						#DATA LOOKUP
+						unless @@db[data_uuid].nil?
+							item = @@db[data_uuid]
+							if item[:subscribers][hostname].nil?
+								item[:subscribers][hostname] = { :url => callback_url}
+							else
+								item[:subscribers][hostname][:url] = callback_url
+							end
+
+							status = "SUBSCRIBED"
+
+							@rsp[:data] = item[:data]
+						else
+							status = "INVLDDATAUUID"
+						end
 					when :unsubscribe
+						data_uuid = request_validation_status[:args][:x_data_uuid]
+						hostname  = authentication_status[:hostname]
+						#DATA LOOKUP
+						unless @@db[data_uuid].nil?
+							status = "UNSUBSCRIBED" unless @@db[data_uuid][:subscribers].delete(hostname).nil?
+						else
+							status = "INVLDDATAUUID"
+						end
 					when :change
+						data_uuid     = request_validation_status[:args][:x_data_uuid]
+						revision_uuid = request_validation_status[:args][:x_revision_uuid]
+						new_revision_uuid = SecureRandom.hex(80)
+
+
+
+						new_revision_uuid = 'a'
+
+
+
+						#DATA LOOKUP
+						unless @@db[data_uuid].nil?
+							if @@db[data_uuid][:revision].eql? revision_uuid
+								@@db[data_uuid][:data] = request.body.read
+								@@db[data_uuid][:x_revision_uuid] = new_revision_uuid
+								#NOTIFY TO OTHER HOSTS THE CHANGE OF THIS ITEM IF ANY
+								push_notifications({'x-command' => 'change'}, @@db[data_uuid][:subscribers], @@db[data_uuid][:data])
+								@rsp[:x_revision_uuid] = new_revision_uuid
+
+								status = "CHANGED"
+							end
+						else
+							status = "INVLDDATAUUID"
+						end
 					when :delete
+						data_uuid     = request_validation_status[:args][:x_data_uuid]
+						revision_uuid = request_validation_status[:args][:x_revision_uuid]
+						#DATA LOOKUP
+						unless @@db[data_uuid].nil?
+							if @@db[data_uuid][:revision].eql? revision_uuid
+
+
+
+								#NOTIFY TO OTHER HOSTS THE DELETION OF THIS ITEM
+								push_notifications({'x-command' => 'delete'}, @@db[data_uuid][:subscribers], nil)
+								
+								
+								@@db.delete(data_uuid)
+								status = "DELETED"
+							end
+						else
+							status = "INVLDDATAUUID"
+						end
 					when :publish
-						eviction_date = @request_date + 2
-
-						@rsp[:x_data_uuid]     = request_validation_status[:args][:x_data_uuid]
-						@rsp[:x_revision_uuid] = request_validation_status[:args][:x_revision_uuid]
-						@rsp[:x_eviction_date] = eviction_date.strftime("%F %T.%L")
-
+						eviction_date = @request_date + 3600
+						data_uuid     = request_validation_status[:args][:x_data_uuid]
+						revision_uuid = request_validation_status[:args][:x_revision_uuid]
 						#ALLOCATION CODE GOES HERE
-						if @@db[@rsp[:x_data_uuid]].nil?
-							@@db[@rsp[:x_data_uuid]] = { 
-								:data => request.body.read, 
-								:revision => @rsp[:x_revision_uuid],
-								:eviction => eviction_date
+						if @@db[data_uuid].nil?
+							@@db[data_uuid] = { 
+								:data        => request.body.read, 
+								:revision    => revision_uuid,
+								:eviction    => eviction_date,
+								:subscribers => Hash.new
 							}
+
+							@rsp[:x_data_uuid]     = data_uuid
+							@rsp[:x_revision_uuid] = revision_uuid
+							@rsp[:x_eviction_date] = eviction_date.strftime("%F %T.%L")
+
 							status = "ALLOCATED"
 						else
 							status = "INVLDDATAUUID"
@@ -82,7 +153,6 @@ class Clarknutcracker < Sinatra::Base
 								@rsp[:data] = item[:data]
 							end
 						end
-						#Check eviction date
 				end
 			end
 		else
@@ -96,7 +166,6 @@ class Clarknutcracker < Sinatra::Base
 	end
 
 	get '/tests' do
-		json :foo => 'bar'
-
+		env['HTTP_X_CALLBACK_URL']
 	end
 end
