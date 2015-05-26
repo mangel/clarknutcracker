@@ -92,8 +92,10 @@ class Clarknutcracker < Sinatra::Base
 							if @@db[data_uuid][:revision].eql? revision_uuid
 								@@db[data_uuid][:data] = request.body.read
 								@@db[data_uuid][:x_revision_uuid] = new_revision_uuid
-								#NOTIFY TO OTHER HOSTS THE CHANGE OF THIS ITEM IF ANY
-								push_notifications({'x-command' => 'change'}, @@db[data_uuid][:subscribers], @@db[data_uuid][:data])
+								#NOTIFY TO OTHER HOSTS THE CHANGE OF THIS ITEM
+								Thread.new{
+									push_notifications({'x-command' => 'change'}, @@db[data_uuid][:subscribers], @@db[data_uuid][:data])
+								}
 								@rsp[:x_revision_uuid] = new_revision_uuid
 
 								status = "CHANGED"
@@ -107,14 +109,11 @@ class Clarknutcracker < Sinatra::Base
 						#DATA LOOKUP
 						unless @@db[data_uuid].nil?
 							if @@db[data_uuid][:revision].eql? revision_uuid
-
-
-
 								#NOTIFY TO OTHER HOSTS THE DELETION OF THIS ITEM
-								push_notifications({'x-command' => 'delete'}, @@db[data_uuid][:subscribers], nil)
-								
-								
-								@@db.delete(data_uuid)
+								Thread.new {
+									@@db.delete(data_uuid)
+									push_notifications({'x-command' => 'delete'}, @@db[data_uuid][:subscribers], nil)
+								}
 								status = "DELETED"
 							end
 						else

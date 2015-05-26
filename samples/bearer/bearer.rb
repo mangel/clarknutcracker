@@ -23,4 +23,8 @@ class Bearer < Sinatra::Base
 
 		r = res.body
 	end
+
+	get '/' do
+		erb :index
+	end
 end

@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf8">
+	<meta http-equiv="X-UA-Compatible" content="IE=edge, chrome=1">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<meta name="HandheldFriendly" content="True">
+
+	<title>Subscriber page</title>
+
+	<link rel="stylesheet" type="text/css" media="screen" href="/css/concise.min.css"/>
+	<link rel="stylesheet" type="text/css" media="screen" href="/jquery-ui/jquery-ui.min.css"/>
+</head>
+<body class="container">
+<header class="row gutters">
+	<h1>Subscriber page settings</h1>
+	<p>This page has been made to configure the traffic test</p>
+</header>
+<section class="row gutters">
+	<div class="column-4">
+		<button id="btnInit" class="btn bg-blue">Initialize</button>
+		<button id="btnRequest" class="btn bg-blue">Read</button>
+	</div>
+	
+	<div class="column-4">
+		<button id="btnPlayStop" class="btn bg-green">Play</button>
+	</div>
+
+	<div class="column-8">
+		<label id="lblInterval">Request interval (100ms)</label>
+		<div id="sldInterval"></div>
+	</div>
+</section>
+<section class="row gutters">
+	<header>
+		<h2>Log</h2>
+	</header>
+	<section id="log" class="row gutters bg-light-gray" style="height:30em;overflow-y:scroll;padding:1em;">
+
+	</section>
+</section>
+<script src="/js/jquery.min.js"></script>
+<script src="/jquery-ui/jquery-ui.min.js"></script>
+<script src="/js/concise.min.js"></script>
+<script>
+	$(document).ready(function(){
+		var btnInit;
+		var btnRequest;
+		var btnPlayStop;
+		var sldInterval;
+		var lblInterval;
+		var log;
+		
+		var sldIntervalOpts;
+
+		var initialized = false;
+		var playing = false;
+
+		var currentInterval = 100;
+
+		var timer;
+
+		var counter = 0;
+
+		function DoRequest(){
+			$.get("/pull", function(data){
+				log.prepend("<p><em>" + new Date().toLocaleTimeString() + "</em> Request performed returned data " + data + "</p>")
+			}).fail(function(){
+				log.prepend("<p><em>" + new Date().toLocaleTimeString() + "</em> An error occurred or something went wrong performing the pull request. </p>");
+			});
+		}
+
+		function OnbtnInit_click(e){
+			if (!initialized){
+				$.get("/load",function(){
+					initialized = true;
+					log.prepend("<p><em>" + new Date().toLocaleTimeString() + "</em> Initialized</p>");
+				}).fail(function(){
+					log.prepend("<p><em>" + new Date().toLocaleTimeString() + "</em> An error eccurred or something went wrong.</p>");
+				});
+			}
+		}
+
+		function OnbtnPlayStop_click(e){
+			if(initialized){
+				if(playing){
+					playing = false;
+					if(timer){
+						clearInterval(timer);
+					}
+					btnPlayStop.removeClass("bg-red");
+					btnPlayStop.addClass("bg-green");
+					btnPlayStop.text("Play");
+				}else{
+					playing = true;
+					timer = setInterval(DoRequest, currentInterval);
+					btnPlayStop.removeClass("bg-green");
+					btnPlayStop.addClass("bg-red");
+					btnPlayStop.text("Stop");
+				}
+			} else {
+				log.prepend("<p><em>" + new Date().toLocaleTimeString() + "</em> Not Yet initialized</p>");
+			}
+		}
+
+		function OnbtnRequest_click(e){
+			if(initialized){
+				DoRequest();
+			}
+		}
+
+		function OnSlide(e, ui){
+			lblInterval.text("Request interval (" + ui.value + "ms)");
+			currentInterval = parseInt(ui.value);
+			if (initialized && playing){
+				if (timer){
+					clearInterval(timer);
+				} 
+				timer = setInterval(DoRequest, currentInterval);
+			}
+		}
+
+		function preInit(){
+			btnInit     = $("#btnInit");
+			btnRequest  = $("#btnRequest");
+			btnPlayStop = $("#btnPlayStop");
+			sldInterval = $("#sldInterval");
+			lblInterval = $("#lblInterval");
+			log         = $("#log");
+			sldIntervalOpts = { 
+				value: 100, 
+				min: 100,
+				max: 5000,
+				step:100,
+				slide: OnSlide
+			};
+		}
+
+		function init(){
+			
+		}
+
+		function bindEvents(){
+			sldInterval.slider(sldIntervalOpts);
+			btnInit.on('click', OnbtnInit_click);
+			btnRequest.on('click', OnbtnRequest_click);
+			btnPlayStop.on('click', OnbtnPlayStop_click);
+		}
+
+		function main(){
+			preInit();
+			init();
+			bindEvents();
+		}
+
+		main();
+	});
+</script>
+</body>
+</html>
