@@ -13,10 +13,20 @@ class Clarknutcracker < Sinatra::Base
 
 	@@db = Hash.new
 
+	@@stats = { 
+		:rpc => 0, 
+		:ops => {
+			:read => 0, :publishes => 0, :subscribes => 0, :unsubscribes => 0, :changes => 0}, 
+		:mem => { :max => 500, :allocated => 0 },
+		:timing => {:last_val => 0, :current_val => 0}
+       	}
+
 	@request_date
 	@request_uuid
 
 	@rsp
+
+	@@statsSemaphore = Mutex.new
 
 	before do
 		@request_date  = Time.now.utc
@@ -40,6 +50,11 @@ class Clarknutcracker < Sinatra::Base
 	end
 
 	post '/' do
+		Thread.new {
+			@@statsSemaphore.synchronize {
+				@@stats[:rpc] += 1
+			}
+		}
 		rsp = Hash.new
 
 		status="NONE"
@@ -49,6 +64,11 @@ class Clarknutcracker < Sinatra::Base
 			unless request_validation_status.nil?
 				case request_validation_status[:command]
 					when :subscribe
+						Thread.new{
+							@@statsSemaphore.synchronize {
+								@@stats[:ops][:subscribes] += 1
+							}
+						}
 						data_uuid    = request_validation_status[:args][:x_data_uuid]
 						hostname     = authentication_status[:hostname]
 						callback_url = request_validation_status[:args][:x_callback_url]
@@ -77,6 +97,9 @@ class Clarknutcracker < Sinatra::Base
 							status = "INVLDDATAUUID"
 						end
 					when :change
+						@@statsSemaphore.synchronize {
+							@@stats[:ops][:changes] += 1
+						}
 						data_uuid     = request_validation_status[:args][:x_data_uuid]
 						revision_uuid = request_validation_status[:args][:x_revision_uuid]
 						new_revision_uuid = SecureRandom.hex(80)
@@ -120,6 +143,9 @@ class Clarknutcracker < Sinatra::Base
 							status = "INVLDDATAUUID"
 						end
 					when :publish
+						@@statsSemaphore.synchronize {
+							@@stats[:ops][:publishes] += 1
+						}
 						eviction_date = @request_date + 3600
 						data_uuid     = request_validation_status[:args][:x_data_uuid]
 						revision_uuid = request_validation_status[:args][:x_revision_uuid]
@@ -158,6 +184,13 @@ class Clarknutcracker < Sinatra::Base
 			#Logg this issue
 		end
 
+		Thread.new{
+			@@statsSemaphore.synchronize {
+				@@stats[:timing][:last_val] = @@stats[:timing][:current_val]
+				@@stats[:timing][:current_val] =  Time.now.utc - @request_date;
+			}
+		}
+
 		@rsp[:x_request_control_data][:x_utc_response_date] = Time.now.utc.strftime("%F %T.%L")
 		@rsp[:x_request_control_data][:x_status_message]    = status
 
@@ -166,5 +199,30 @@ class Clarknutcracker < Sinatra::Base
 
 	get '/tests' do
 		env['HTTP_X_CALLBACK_URL']
+	end
+
+	get '/rpc' do
+		r = 0
+		@@statsSemaphore.synchronize {
+			r = @@stats[:rpc]
+			@@stats[:rpc] = 0
+		}
+		r.to_s
+	end
+
+	get '/valuation' do
+		json @@stats[:timing]
+	end
+
+	get '/operations' do
+		r = {:reads => 0, :publishes => 0, :subscribes => 0, :unsubscribes => 0}
+		@@statsSemaphore.synchronize {
+			r = @@stats[:ops]
+			#@@stats[:ops][:reads] = 0
+			#@@stats[:ops][:publishes] = 0
+			#@@stats[:subscribes] = 0
+			#@@stats[:unsubscribes] = 0
+		}
+		json r
 	end
 end
